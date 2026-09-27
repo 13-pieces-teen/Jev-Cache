@@ -12,18 +12,11 @@ $installedRoot = if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'JevCache.e
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\dist\JevCache'))
 }
-$hostExe = Join-Path $installedRoot 'browser-host\JevCacheNativeHost\JevCacheNativeHost.exe'
-$extensionManifest = Join-Path $installedRoot 'extensions\edge\manifest.json'
-if (-not (Test-Path -LiteralPath $hostExe)) { throw 'Build the application and browser host first.' }
-$manifest = Get-Content -LiteralPath $extensionManifest -Raw | ConvertFrom-Json
-$publicKey = [Convert]::FromBase64String($manifest.key)
-$sha = [System.Security.Cryptography.SHA256]::Create()
-$digest = $sha.ComputeHash($publicKey)
-$extensionId = -join ($digest[0..15] | ForEach-Object { [char](97 + ($_ -shr 4)); [char](97 + ($_ -band 15)) })
-$target = Join-Path $installedRoot 'native-messaging.json'
-$registration = @{name=$hostName; description='Jev-Cache local Edge bridge'; path=$hostExe; type='stdio'; allowed_origins=@("chrome-extension://$extensionId/")}
-[System.IO.File]::WriteAllText($target, ($registration | ConvertTo-Json -Depth 3), [System.Text.UTF8Encoding]::new($false))
-New-Item -Path $regPath -Force | Out-Null
-Set-Item -LiteralPath $regPath -Value $target
-Write-Output "Registered for this Windows user. Extension ID: $extensionId"
+$assistantExe = Join-Path $installedRoot 'JevCache.exe'
+if (-not (Test-Path -LiteralPath $assistantExe)) { throw 'Build the complete application first.' }
+# Use the same implementation as the settings button, including the resolved
+# credential file that connects an Edge-launched host to this assistant.
+$registrationProcess = Start-Process -FilePath $assistantExe -ArgumentList '--prepare-edge' -WindowStyle Hidden -Wait -PassThru
+if ($registrationProcess.ExitCode -ne 0) { throw 'Preparing the native messaging host failed.' }
+Write-Output 'Registered the local bridge for this Windows user.'
 Write-Output "Load unpacked extension: $(Join-Path $installedRoot 'extensions\edge')"

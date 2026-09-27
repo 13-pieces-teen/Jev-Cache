@@ -8,11 +8,13 @@ import os
 import queue
 import threading
 import time
+from multiprocessing import AuthenticationError
 from multiprocessing.connection import Listener
 
 from .storage import data_directory, protect_secret, unprotect_secret
 
 HOST_NAME = "ai.typesafe.jevcache"
+CONNECTION_CONFIG = "bridge-connection.json"
 MAX_MESSAGE = 512 * 1024
 
 
@@ -51,8 +53,14 @@ class Bridge:
                             while self.enabled:
                                 data = conn.recv_bytes(MAX_MESSAGE)
                                 message = json.loads(data)
-                                if message.get("protocol") != 1:
+                                if not isinstance(message, dict) or message.get("protocol") != 1:
                                     raise ValueError("protocol")
+                                if message.get("kind") == "ping":
+                                    conn.send_bytes(json.dumps({"protocol": 1, "commands": []}).encode())
+                                    continue
+                                if message.get("kind") != "snapshot":
+                                    raise ValueError("message kind")
+                                self.error = ""
                                 self.last_seen = time.monotonic()
                                 try:
                                     self.incoming.put_nowait(message)
@@ -62,6 +70,12 @@ class Bridge:
                                 with self.lock:
                                     commands, self.commands = self.commands, []
                                 conn.send_bytes(json.dumps({"protocol": 1, "commands": commands}).encode())
+                    except AuthenticationError:
+                        # A stale/different launcher configuration must not stop
+                        # the listener and prevent all subsequent reconnections.
+                        self.error = "浏览器桥接认证失败，请重新准备 Edge 接入"
+                        self.last_seen = 0
+                        self.cancel()
                     except (EOFError, OSError, ValueError, json.JSONDecodeError):
                         self.last_seen = 0
                         self.cancel()

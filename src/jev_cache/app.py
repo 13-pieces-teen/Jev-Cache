@@ -21,7 +21,13 @@ def main():
     parser.add_argument("--screenshot", type=Path)
     parser.add_argument("--quit-after", type=int, default=0)
     parser.add_argument("--start-hidden", action="store_true")
+    parser.add_argument("--prepare-edge", action="store_true")
     args = parser.parse_args()
+    if args.prepare_edge:
+        from .browser_setup import register_edge
+
+        register_edge()
+        return 0
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Jev-Cache")
     app.setOrganizationName("JevCache")
