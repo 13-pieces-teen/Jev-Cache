@@ -21,19 +21,26 @@ async function boot() {
 function connect() {
   if (port) return;
   try {
-    port = chrome.runtime.connectNative(HOST);
-    port.onMessage.addListener(async (message: any) => {
-      await chrome.storage.local.set({connected: !message.error, lastSeen: Date.now()});
+    const connection = chrome.runtime.connectNative(HOST);
+    port = connection;
+    connection.onMessage.addListener(async (message: any) => {
+      if (port !== connection) return;
+      await chrome.storage.local.set({connected: !message.error, lastSeen: Date.now(),
+        connectionError: message.error || ''});
       for (const cmd of message.commands || []) await execute(cmd);
     });
-    port.onDisconnect.addListener(() => {
-      void chrome.runtime.lastError;
+    connection.onDisconnect.addListener(() => {
+      const error = chrome.runtime.lastError?.message || 'native_host_disconnected';
+      if (port !== connection) return;
       port = null;
-      chrome.storage.local.set({connected: false});
+      chrome.storage.local.set({connected: false, connectionError: error, checkedAt: Date.now()});
       setTimeout(connect, 5000);
     });
     void snapshot();
-  } catch { port = null; }
+  } catch (error) {
+    port = null;
+    chrome.storage.local.set({connected: false, connectionError: (error as Error).message, checkedAt: Date.now()});
+  }
 }
 async function inspected(tab: any) {
   let probe: any = null;
@@ -90,7 +97,7 @@ async function execute(cmd: any) {
     } else if (cmd.action === 'discard_tab') {
       const current = await inspected(tab);
       if (current.active || current.pinned || current.audible || current.loading || current.discarded
-          || current.dirty || !current.auto_discardable || (!current.verified && !cmd.explicit)) throw Error('protected');
+          || current.dirty || !current.auto_discardable || !current.verified) throw Error('protected');
       // Re-read identity immediately before applying a browser action.
       if ((nav[cmd.tab_id] || 0) !== cmd.navigation) throw Error('navigated');
       const refreshed = await chrome.tabs.get(cmd.tab_id);
@@ -112,6 +119,13 @@ chrome.tabs.onUpdated.addListener((id: number, change: any) => {
 });
 chrome.tabs.onRemoved.addListener((id: number) => { delete nav[id]; chrome.storage.session.set({nav}); });
 chrome.runtime.onMessage.addListener((msg: any, sender: any) => {
+  if (msg.type === 'retry_connection' && !sender.tab) {
+    const old = port;
+    port = null;
+    old?.disconnect();
+    connect();
+    return;
+  }
   if (msg.type === 'user_activity' && sender.tab && !sender.tab.incognito) {
     pendingEvents.push({type: 'usage', tab_id: sender.tab.id, navigation: nav[sender.tab.id] || 0,
                         origin: 'user', event_id: crypto.randomUUID(), at: Date.now() / 1000});
