@@ -1,0 +1,9 @@
+{
+  "name": "jev-cache-edge",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "esbuild src/background.ts src/probe.ts --bundle --outdir=dist --format=iife --target=chrome120"
+  },
+  "devDependencies": {"esbuild": "^0.25.0"}
+}

@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Jev-Cache · 网页助手",
+  "version": "0.1.0",
+  "description": "连接本机 Jev-Cache，释放明确选择的闲置网页。只读文档范围提供自动候选，其他页面保留。",
+  "permissions": [
+    "tabs",
+    "nativeMessaging",
+    "storage",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Jev-Cache 连接状态"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://docs.python.org/3/*",
+        "https://doc.qt.io/qtforpython-6/*"
+      ],
+      "js": [
+        "dist/probe.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsZu/IQqwILvgAEXhGjxLtxI3QKbIghBp2rQ9lkh+K6vNakk8n37gNkHdHpajUwbAZWtYSkNjltWvEvFG1vy4KVoMWmzEpDv8qXp7ml04tqoKVhhGfhsqay9e9AoSH67Y0j5zWw/cT1HFO26tqPiKyFlmPyC070WdnHCxAvrRFisW8dNVHWoD8EYLEweP7jsRavGgaBjMvscB85WFBLfuyEWqJm2sM6hDnSrOyotdeyK2HWkNVyV3fsvWAqcGY8oUvclJcaKefTS4wpqE/JCOTJQX9MIKNoATT73221A3MSkfQS3qxktWQCE0l/PSRPp8k2N6038h58/Uz9n0IuzPrwIDAQAB"
+}
