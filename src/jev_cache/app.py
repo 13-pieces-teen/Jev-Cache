@@ -49,12 +49,21 @@ def main():
     runtime = Runtime()
     window = MainWindow(runtime)
     if not args.start_hidden:
-        window.show()
+        if args.screenshot:
+            window.show_panel()
+        else:
+            window.show_quick()
     runtime.start()
 
     def capture():
         args.screenshot.parent.mkdir(parents=True, exist_ok=True)
+        window.tabs.setCurrentIndex(0)
+        app.processEvents()
         window.grab().save(str(args.screenshot))
+        window.floating.grab().save(str(args.screenshot.with_name("floating-window.png")))
+        window.show_quick()
+        app.processEvents()
+        window.quick.grab().save(str(args.screenshot.with_name("quick-panel.png")))
         sample = window.state.get("sample", {})
         (args.screenshot.parent / "smoke-state.json").write_text(
             json.dumps(
@@ -63,6 +72,9 @@ def main():
                     "sample": sample,
                     "item_count": len(window.state.get("items", [])),
                     "provider_configured": window.state.get("configured", False),
+                    "browser_connected": window.state.get("browser_connected", False),
+                    "browser_tab_count": sum(i.kind == "tab" for i in window.state.get("items", [])),
+                    "browser_error": window.state.get("browser_error", ""),
                     "fake_data": False,
                 },
                 indent=2,
@@ -79,6 +91,8 @@ def main():
         runtime.stop()
         runtime.wait(12000)
         window.tray.hide()
+        window.quick.hide()
+        window.floating.fullscreen_timer.stop()
         window.floating.close()
         lock.unlock()
 

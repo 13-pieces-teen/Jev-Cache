@@ -191,7 +191,11 @@ class Runtime(QThread):
                 break
             if kind == "optimize":
                 self.context = str(payload.get("context", ""))[:200]
-                self._optimize(now, automatic=False)
+                # An explicit click starts a new manual round, including from pause.
+                self.paused = False
+                self._optimize(
+                    now, automatic=False, allow_summary_once=payload.get("allow_summary_once") is True
+                )
             elif kind == "pause":
                 self.paused = bool(payload["value"])
                 self.plan.clear()
@@ -426,12 +430,13 @@ class Runtime(QThread):
             used, frequency = self.usage.get(item.stable_key, now)
             self.items[item.id] = replace(item, last_used=used or item.last_used, frequency=frequency)
 
-    def _optimize(self, now, automatic):
+    def _optimize(self, now, automatic, *, allow_summary_once=False):
         if self.paused or self.pending or self.future or self.plan:
             if not automatic:
                 self.notice.emit("当前已暂停或正在处理，请稍候。")
             return
-        if not self.provider.configured or not self.settings["cloud"]:
+        summary_allowed = self.settings["cloud"] or (not automatic and allow_summary_once)
+        if not self.provider.configured or not summary_allowed:
             self.status = "已检查当前占用 · 基础模式"
             if not automatic:
                 self.notice.emit("尚未启用 Jev。可在设置中配置，或自行选择应用请求正常关闭。")
@@ -600,7 +605,12 @@ class Runtime(QThread):
             self.measurements.append(
                 {"id": action_id, "started": pending["started"], "ended": now, "body": body}
             )
-            self.last_result = {"valid": False, "reason": "measuring", "name": item.name}
+            self.last_result = {
+                "valid": False,
+                "reason": "measuring",
+                "name": item.name,
+                "action_id": action_id,
+            }
 
     def _measure(self, now):
         remaining = []
@@ -611,7 +621,7 @@ class Runtime(QThread):
             result = self.window.measure(
                 measurement["started"], measurement["ended"], measurement.get("concurrent", False)
             )
-            self.last_result = result | {"name": measurement["body"]["name"]}
+            self.last_result = result | {"name": measurement["body"]["name"], "action_id": measurement["id"]}
             self.store.receipt(measurement["id"], measurement["body"] | {"measurement": result})
         self.measurements = remaining
 
@@ -652,9 +662,20 @@ class Runtime(QThread):
             "status": self.status,
             "paused": self.paused,
             "busy": bool(self.future or self.pending or self.plan),
+            "phase": (
+                "executing"
+                if self.pending or self.plan
+                else "connecting"
+                if self.future and self.future_kind == "test"
+                else "judging"
+                if self.future
+                else "idle"
+            ),
+            "memory_pressure": bool(self.pressure_since and now - self.pressure_since >= 20),
             "configured": self.provider.configured,
             "settings": dict(self.settings),
             "browser_connected": self.bridge.connected,
+            "browser_error": self.bridge.error,
             "kept": set(self.kept),
             "keep_names": dict(self.keep_names),
             "cooldown": set(self.cooldown),
